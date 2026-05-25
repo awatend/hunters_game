@@ -1,0 +1,36 @@
+{
+  "type": "hunting_status",
+  "category": "state",
+  "fields": {
+    "vehicle_id": {
+      "type": "str",
+      "required": true,
+      "description": "Vehicle that is sending the update"
+      },
+    "polygon": {
+      "type": "list[float]", 
+      "required": true, "description": "covered polygon"
+      },
+    "position": {
+    "type": "list[float]",
+     "required": false, 
+      "description": "[lat, lon, depth_m]"}
+    },
+
+ 
+  "example": {
+      "vehicle_id": "02",
+      "position": [59.82, 10.53, 12.5],
+      "polygon": [ 
+        [-122.4194, 37.7749],
+        [-122.4786, 37.8199],
+        [-122.3912, 37.8077],
+        [-122.4194, 37.7749]
+      ] 
+
+  },
+
+  "defaults": {
+    "destination": "broadcast"
+  }
+}

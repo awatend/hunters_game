@@ -12,20 +12,23 @@ from imcpy.decorators import Periodic, Subscribe
 logger = logging.getLogger('examples.FollowRef')
 
 
-class FollowRef(DynamicActor):
+class FollowPlan(DynamicActor):
     def __init__(self, target):
         super().__init__()
         self.target = target
         self.heartbeat.append(target)
         self.state = None
-        self.lat = 0.0
-        self.lon = 0.0
+        self.ref_lat =  1.1072485380099248
+        self.ref_lon = 0.18070347568333509
+        self.lat=0.0
+        self.lon=0.0
         self.last_ref = False
+        self.plan_sent = False
         self.wp = [
-            (50.0, 0.0),
-            (0.0, 50.0),
-            (-50, 0.0),
-            (0.0, -50.0),
+            (0.0, 0.0),
+            (0.0, 70.0),
+            (70, 70),
+            (70, 0.0),
         ]  # North/east offsets for waypoints
         self.wp_next = 0
 
@@ -35,7 +38,7 @@ class FollowRef(DynamicActor):
         """
         try:
             next_coord = self.wp[self.wp_next % len(self.wp)]
-            lat, lon = imcpy.coordinates.WGS84.displace(self.lat, self.lon, n=next_coord[0], e=next_coord[1])
+            lat, lon = imcpy.coordinates.WGS84( n=next_coord[0], e=next_coord[1])
             self.wp_next += 1
 
             node = self.resolve_node_id(node_id)
@@ -51,7 +54,7 @@ class FollowRef(DynamicActor):
 
             # Assign the speed
             ds = imcpy.DesiredSpeed()
-            ds.value = 1.6
+            ds.value = 2.2
             ds.speed_units = imcpy.SpeedUnits.METERS_PS
             r.speed = ds
 
@@ -75,6 +78,101 @@ class FollowRef(DynamicActor):
         except KeyError:
             return False
 
+
+    def send_plan(self):
+        if self.plan_sent:
+            return
+        try:
+            node = self.resolve_node_id(self.target)
+
+            # Create plan
+            spec = imcpy.PlanSpecification()
+            spec.plan_id = 'WaypointPlan'
+            spec.description = 'Multi-waypoint plan'
+
+            previous_man_id = None
+
+            for i, (north, east) in enumerate(self.wp):
+                # Compute waypoint in lat/lon
+                lat, lon = imcpy.coordinates.WGS84.displace(
+                    self.ref_lat, self.ref_lon, n=north, e=east
+                )
+
+                # Create Goto maneuver
+                goto = imcpy.Goto()
+                goto.lat = lat
+                goto.lon = lon
+
+                # Depth
+                goto.z = 0.0
+                goto.z_units = imcpy.ZUnits.DEPTH
+
+                # Speed
+                goto.speed = 1.6
+                goto.speed_units = imcpy.SpeedUnits.METERS_PS
+
+                # Wrap into PlanManeuver
+
+                man = imcpy.PlanManeuver()
+                man.maneuver_id = f'M{i}'
+                man.data = goto
+
+                spec.maneuvers.append(man)
+
+                # Define sequence
+                if previous_man_id is not None:
+                    pt = imcpy.PlanTransition()
+                    pt.source_man = previous_man_id
+                    pt.dest_man = man.maneuver_id
+                    pt.conditions = 'true'  # Transition condition (always true in this case)
+
+                    spec.transitions.append(pt)
+
+                previous_man_id = man.maneuver_id
+
+            # Start from first maneuver
+            spec.start_man_id = 'M0'
+
+            # Send plan
+            pc = imcpy.PlanControl()
+            pc.type = imcpy.PlanControl.TypeEnum.REQUEST
+            pc.op = imcpy.PlanControl.OperationEnum.START
+            pc.plan_id = spec.plan_id
+            pc.arg = spec
+
+            self.send(node, pc)
+            self.plan_sent = True
+            logger.info("Full waypoint plan sent")
+
+        except KeyError:
+            pass
+
+    @Periodic(2)
+    def try_send_plan(self):
+        if not self.plan_sent :
+            self.send_plan()
+
+
+
+    @Subscribe(imcpy.PlanControlState)
+    def recv_plan_state(self, msg):
+        if not self.is_from_target(msg):
+            return
+
+        logger.info(f"Plan state: {msg.state}, maneuver: {msg.man_id}")
+
+        if msg.state == imcpy.PlanControlState.StateEnum.READY:
+            logger.info("Plan finished")
+
+            self.plan_sent = False  # allow sending a new plan
+
+    @Subscribe(imcpy.EstimatedState)
+    def recv_estate(self, msg):
+        if self.is_from_target(msg):
+            self.lat, self.lon, _ = imcpy.coordinates.toWGS84(msg)
+            logger.info(f"Estimated location: {self.lat}, {self.lon}")
+
+    '''
     @Periodic(10)
     def init_followref(self):
         """
@@ -115,7 +213,7 @@ class FollowRef(DynamicActor):
                 logger.info('Started FollowRef command')
             except KeyError:
                 pass
-
+    
     @Subscribe(imcpy.EstimatedState)
     def recv_estate(self, msg):
         if self.is_from_target(msg):
@@ -158,12 +256,12 @@ class FollowRef(DynamicActor):
                 self.send(self.target, self.last_ref)
             except KeyError:
                 pass
-
+        '''
 
 if __name__ == '__main__':
     # Setup logging level and console output
     logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
     # Run actor
-    x = FollowRef('lauv-bravo')
+    x = FollowPlan('mr-usv-grethe')
     x.run()

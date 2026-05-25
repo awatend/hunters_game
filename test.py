@@ -9,6 +9,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Circle
 from matplotlib.colors import LinearSegmentedColormap
 from skimage import measure
+from skimage.draw import polygon
 import fields2cover as f2c
 import math
 
@@ -19,6 +20,12 @@ def grid_extent(env):
     return [E0, E0 + W * res, N0, N0 + H * res]
 
 
+def closest_point(pos, start, end):
+    d_start = (start.getY()- pos[0])**2 + (start.getX() - pos[1])**2
+    d_end   = (end.getY()   - pos[0])**2 + (end.getX()   - pos[1])**2
+
+    return start if d_start < d_end else end
+
 def covered_grid_to_world_points(env, covered_mask: np.ndarray):
     ii, jj = np.where(covered_mask)
     if ii.size == 0:
@@ -28,6 +35,31 @@ def covered_grid_to_world_points(env, covered_mask: np.ndarray):
     N = N0 + (ii+0.5) * res
     E = E0 + (jj+0.5) * res
     return N, E
+
+def polygon_world_to_grid(shape, origin,resolution, polygon_NE):
+    H, W = shape
+    N0, E0 = origin
+    res = resolution
+
+    contour = polygon_NE.getExteriorRing()
+    coordinates=[]
+    for p in range(contour.size()):
+        coordinates.append ((contour.getGeometry(p).getY(), contour.getGeometry(p).getX()))   # (N,E) ← (y,x)
+
+    coords = np.array(coordinates)
+    ii = (coords[:,0] - N0) / res
+    jj = (coords[:, 1] - E0) / res
+
+    ii = np.clip(ii, 0, H - 1)
+    jj = np.clip(jj, 0, W - 1)
+
+    # Rasterize polygon
+    rr, cc = polygon(ii, jj, shape=(H, W))
+    mask = np.zeros((H, W), dtype=bool)
+    mask[rr, cc] = True
+    #print(f"testing function: contours{contour} polygon{coords}")
+
+    return mask,coords
 
 
 def disk_mask(env, center_NE, radius_m):
@@ -60,9 +92,11 @@ def mask_to_f2c_cell(mask, scale=1.0):
     # 2. Pick the largest contour (the field boundary)
     main_contour = max(contours, key=len)
     #simplify contour to reduce points (tolerance in pixels)
-    tolerance = 2.0
+    tolerance = 1.5
     simplified_contour = measure.approximate_polygon(main_contour, tolerance=tolerance)
-
+    if len(simplified_contour) < 4:
+        # Option A: Revert to the original contour to keep the shape
+        simplified_contour = main_contour
     # 3. Build the F2C Geometry
     ring = f2c.LinearRing()
 
@@ -99,7 +133,7 @@ def route_planner(cell):
     # 2. Add your existing cell to that container
     cells_container.addGeometry(cell)
 
-    # cELL DECOMPOSITION STEP
+    # CELL DECOMPOSITION STEP
     #decomp = f2c.DECOMP_TrapezoidalDecomp()
     # Split vertically (0.5 * pi). This creates simple trapezoids.
     #decomp.setSplitAngle(0.5 * math.pi)
@@ -149,16 +183,70 @@ def route_planner(cell):
     path_planner = f2c.PP_PathPlanning()
     dubins = f2c.PP_DubinsCurves()
     final_path = path_planner.planPath(robot, route, dubins)
+    #final_path.reduce(1.5) # Reduce points to simplify the path (tolerance in meters)
 
     # Print some results
     print(f"Total path length: {final_path.length():.2f} meters {final_path.size()} ")
     f2c.Visualizer.figure()
+    #f2c.Visualizer.plot(cell)
+    #f2c.Visualizer.save(f"coverage_plan_{final_path.length():.2f}.png")
+
+    f2c.Visualizer.figure()
     f2c.Visualizer.plot(cell)
     f2c.Visualizer.plot(final_path)
-    f2c.Visualizer.save(f"coverage_plan_{final_path.length():.2f}.png")
+    f2c.Visualizer.save(f"main_contour{final_path.length():.2f}.png")
 
+    if final_path.size() < 0:
+        return
+    else:
+        combined_cells = f2c.Cells()  # Use F2CCells prefix for safety
+        buffer_dist = robot.getWidth() / 2.0
 
+        for swaths_section in filtered_swaths:
+            for i in range(swaths_section.size()):
+                swath = swaths_section.at(i)
 
+                # Convert Swath (Line) to Cells (Polygon)
+                swath_poly = swath.areaCovered()#.buffer(buffer_dist)
+
+                # Now you can append a Cell/Cells to Cells
+                combined_cells = combined_cells.unionOp(swath_poly)
+
+        # Correct Visualization logic
+        f2c.Visualizer.figure()
+        f2c.Visualizer.plot(combined_cells)  # Plot the buffered swath area
+        f2c.Visualizer.save(f"coverage_map{final_path.size():.2f}.png")
+        #print(f"Combined coverage area: {combined_cells.area()} m2")
+        simplified_cells = combined_cells.simplify(0.1)
+
+        # 3. Visualization
+        f2c.Visualizer.figure()
+        f2c.Visualizer.plot(simplified_cells.convexHull())  # Plot simplified coverage
+        f2c.Visualizer.save(f"simplified_cell_{final_path.size():.2f}.png")
+
+        # 4. Print results
+        #print(f"Combined coverage area: {simplified_cells.area():.2f} m2")
+        return final_path, final_path.atStart(), final_path.atEnd() ,simplified_cells.convexHull()
+
+def is_treasure_founded(mask, treasure_location ):
+    if treasure_location is None:
+        return False
+    i, j = treasure_location
+    return mask[i, j]
+
+def is_treasure_foundeds(mask, treasure_location, resolution, threshold_m=5.0):
+    if treasure_location is None:
+        return False
+
+    ti, tj = int(treasure_location[0]), int(treasure_location[1])
+
+    # Distance (in cells) to nearest True in mask
+    dist_cells = distance_transform_edt(~mask)
+
+    # Convert to meters
+    dist_m = dist_cells[ti, tj] * resolution
+
+    return dist_m < threshold_m
 
 def main():
     # -----------------------
@@ -167,12 +255,15 @@ def main():
     #np.random.seed(0)
     shape = (
         130, 220)
-    res = 20.0
+    res = 5.0
     origin = (0.0, 0.0)
+
+
+
 
     # Global parameters
     # -----------------------
-    T = 10
+    T = 100
     S_marie = 80
     S_thor = 80
     S_grethe = 20
@@ -209,6 +300,10 @@ def main():
     thor.set_internal_map(env_thor)
     grethe.set_internal_map(env_grethe)
 
+    #Define treasure location
+    coords = np.argwhere(env_marie.Initial_area & ~env_marie.Collision_area)
+    treasure_location = tuple(coords[np.random.randint(len(coords))])
+    print(f"Treasuuuuuuuuuuuuuuure is at grid location: {treasure_location}")
     # Mark initial covered on each AUV map
     for auv in (marie, thor):
         i, j = auv.internal_map.world_to_grid(auv.pos[0], auv.pos[1])
@@ -262,6 +357,8 @@ def main():
     thor_hist = []
     grethe_marie_dist_hist = []
     grethe_thor_dist_hist = []
+    marie_cov_pl=[]
+    thor_cov_pl=[]
 
     # Coverage
     cov_line, = ax_metrics.plot([], [], linewidth=2, label="Total coverage ratio")
@@ -288,6 +385,11 @@ def main():
         alpha=1.0,  # transparency so obstacles remain visible
         interpolation="bilinear"
     )
+    if treasure_location is not None:
+        treasure_N, treasure_E = env_marie.grid_to_world(treasure_location[0], treasure_location[1])
+        ax.plot(treasure_E, treasure_N, "y*", markersize=15, label="Treasure")
+        ax.legend(loc="upper right")
+
     ax.imshow(
         obstacle_img,
         origin="lower",
@@ -296,9 +398,25 @@ def main():
         alpha=0.6,  # very transparent
     )
 
-    # Covered scatters (world points)
-    marie_cov_sc = ax.scatter([], [], s=12, c="g", alpha=0.9, label="Marie covered")
-    thor_cov_sc = ax.scatter([], [], s=12, c="c", alpha=0.9, label="Thor covered")
+    # Covered polygons (world points)
+    for poly in marie_cov_pl:
+        if len(poly) == 0:
+            continue
+
+        N = [p[0] for p in poly]
+        E = [p[1] for p in poly]
+        #print(f"polygon to draw {poly}")
+
+        ax.fill(E, N, color='green', alpha=0.3, label="Marie coverage")
+
+    for poly in thor_cov_pl:
+        if len(poly) == 0:
+            continue
+
+        N = [p[0] for p in poly]
+        E = [p[1] for p in poly]
+
+        ax.fill(E, N, color='green', alpha=0.3, label = "Thor coverage")
 
     # Vehicle markers
     marie_dot, = ax.plot([], [], "go", markersize=8, label="Marie")
@@ -328,6 +446,7 @@ def main():
 
 
     def update_marie_plan(marie, S, surface_thor, surface_grethe):
+        print("update_marie_plan")
         env = marie.internal_map
 
         # 1) Within_range is grethe comm disk (each AUV "sees" range around grethe)
@@ -361,6 +480,7 @@ def main():
             min_safe_dist_m=6.0
 
         )
+        '''
         marie.last_surface = surface_mask
         marie.last_idx = idx
 
@@ -381,7 +501,8 @@ def main():
 
         except Exception as e:
             print(f"Error: {e}")
-        return surface_mask,f2c_cell
+            '''
+        return surface_mask
 
     def update_thor_plan(thor, S, surface_marie, surface_grethe):
         env = thor.internal_map
@@ -420,24 +541,8 @@ def main():
         thor.last_surface = surface_mask
         thor.last_idx = idx
 
-        env.mark_covered(surface_mask)
 
-        # 5) Move AUV: teleport to idx (closest in range), else stay near seed
-        if idx is not None:
-            endN, endE = env.grid_to_world(int(idx[0]), int(idx[1]))
-            thor.pos[:] = [float(endN), float(endE)]
-        else:
-            endN, endE = env.grid_to_world(int(seed[0]), int(seed[1]))
-            thor.pos[:] = [float(endN), float(endE)]
-
-        f2c_cell = None
-        try:
-            f2c_cell = mask_to_f2c_cell(surface_mask, scale=env.resolution)
-            print(f"Cell Area: {f2c_cell.area():.2f} m²")
-
-        except Exception as e:
-            print(f"Error: {e}")
-        return surface_mask, f2c_cell
+        return surface_mask
 
     def update_grethe_plan(grethe, S, surface_marie, surface_thor):
         env = grethe.internal_map
@@ -488,15 +593,7 @@ def main():
         else:
             endN, endE = env.grid_to_world(int(seed[0]), int(seed[1]))
             grethe.pos[:] = [float(endN), float(endE)]
-
-        f2c_cell = None
-        try:
-            f2c_cell = mask_to_f2c_cell(surface_mask, scale=env.resolution)
-            print(f"Cell Area: {f2c_cell.area():.2f} m²")
-
-        except Exception as e:
-            print(f"Error: {e}")
-        return surface_mask, f2c_cell
+        return surface_mask
     # -----------------------
     # Animation update
     # -----------------------
@@ -513,7 +610,7 @@ def main():
 
 
         return (
-            marie_cov_sc, thor_cov_sc,
+            marie_cov_pl, thor_cov_pl,
             marie_dot, thor_dot, grethe_dot,
             marie_bubble, thor_bubble, grethe_bubble, grethe_comm,
             cov_line, marie_line, thor_line,
@@ -522,29 +619,84 @@ def main():
 
 
     def update(frame):
+        print("start update")
         avoid_thor=thor.set_safety_bubble(thor.pos,thor.safety_bubble_radius)
         avoid_marie=marie.set_safety_bubble(marie.pos,marie.safety_bubble_radius)
         avoid_grethe=grethe.set_safety_bubble(grethe.pos,grethe.safety_bubble_radius)
+
         # AUVs perform coverage using their own internal maps
-        marie_surface, marie_cell=update_marie_plan(marie, S_marie, avoid_thor, avoid_grethe)
-        thor.internal_map.update_coverage(marie_surface)
-        grethe.internal_map.update_coverage(marie_surface)
+        marie_surface=update_marie_plan(marie, S_marie, avoid_thor, avoid_grethe)
+        f2c_cell = None
+        try:
+            f2c_cell = mask_to_f2c_cell(marie_surface, scale=marie.internal_map.resolution)
+            #print(f"Cell Area: {f2c_cell.area():.2f} m²")
 
-        thor_surface, thor_cell=update_thor_plan(thor, S_thor, avoid_marie, avoid_grethe)
-        marie.internal_map.update_coverage(thor_surface) #Assume the vehicle communicate
-        grethe.internal_map.update_coverage(thor_surface)
+        except Exception as e:
+            print(f"Error: {e}")
 
-        grethe_surface, grethe_cell = update_grethe_plan(grethe, S_grethe, avoid_thor,avoid_marie)
+        if f2c_cell is not None:
+            print("Planning for marie")
+            result = route_planner(f2c_cell)
+            if result is not None:
+                m_path, m_start, m_end, polygon_NE_marie=result
+                #print(f"polygon: {polygon_NE_marie}")
+                #print(type(polygon_NE_marie))
+                marie_cov_surface, covered_NE_marie=polygon_world_to_grid(marie.internal_map.shape,marie.internal_map.origin,marie.internal_map.resolution, polygon_NE_marie)
+                marie.internal_map.mark_covered(marie_cov_surface)
+                marie.last_surface = marie_cov_surface
+                if is_treasure_founded(marie_cov_surface, treasure_location):
+                    print("Treasure Founded by Marie!")
+                    return
 
-        route_planner(marie_cell)
-        route_planner(thor_cell)
-        #route_planner(grethe_cell)
+                if closest_point(marie.pos,m_start,m_end)== m_start:
+                    marie.pos[0] = float(m_end.getY())
+                    marie.pos[1] = float(m_end.getX())
+                else:
+                    marie.pos[0] = float(m_start.getY())
+                    marie.pos[1] = float(m_start.getX())
 
-        # Update covered scatter (each from its own internal map)
-        mN, mE = covered_grid_to_world_points(env_marie,marie.internal_map.Covered_area)
-        tN, tE = covered_grid_to_world_points(env_thor,thor.internal_map.Covered_area)
-        marie_cov_sc.set_offsets(np.column_stack([mE, mN]) if mN.size else np.empty((0, 2)))
-        thor_cov_sc.set_offsets(np.column_stack([tE, tN]) if tN.size else np.empty((0, 2)))
+                thor.internal_map.update_coverage(marie_cov_surface)
+                grethe.internal_map.update_coverage(marie_cov_surface)
+
+                marie_cov_pl.append(covered_NE_marie)
+                print(f"polygon appended{covered_NE_marie}")
+
+        thor_surface=update_thor_plan(thor, S_thor, avoid_marie, avoid_grethe)
+        print("planning for thor")
+        f2c_cell = None
+        try:
+            f2c_cell = mask_to_f2c_cell(thor_surface, scale=thor.internal_map.resolution)
+            #print(f"Cell Area: {f2c_cell.area():.2f} m²")
+
+        except Exception as e:
+            print(f"Error: {e}")
+        if f2c_cell is not None:
+            result =route_planner(f2c_cell)
+            if result is not None:
+                t_path, t_start, t_end, polygon_NE_thor = result
+                thor_cov_surface,thor_covered_NE=polygon_world_to_grid(thor.internal_map.shape,thor.internal_map.origin,thor.internal_map.resolution, polygon_NE_thor)
+                thor.internal_map.mark_covered(thor_cov_surface)
+                thor.last_surface = thor_cov_surface
+                if is_treasure_founded(thor_cov_surface, treasure_location):
+                    print("Treasure Founded by Thor!")
+                    return
+
+                if closest_point(thor.pos,t_start,t_end) == t_start:
+                    thor.pos[0] = float(t_end.getY())
+                    thor.pos[1] = float(t_end.getX())
+                else:
+                    thor.pos[0] = float (t_start.getY())
+                    thor.pos[1] = float(t_start.getX())
+
+                marie.internal_map.update_coverage(thor_cov_surface) #Assume the vehicle communicate
+                grethe.internal_map.update_coverage(thor_cov_surface)
+                thor_cov_pl.append(thor_covered_NE)
+
+            grethe_surface = update_grethe_plan(grethe, S_grethe, avoid_thor,avoid_marie)
+
+
+            # Update covered scatter (each from its own internal map)
+
 
         # Update vehicle dots (x=E, y=N)
         marie_dot.set_data([marie.pos[1]], [marie.pos[0]])
@@ -611,20 +763,39 @@ def main():
         )
         ax_dist.set_ylim(0, max_dist * 1.1)
 
+        for poly in marie_cov_pl:
+            if len(poly) == 0:
+                continue
 
+            Nm = [p[0] for p in poly]
+            Em = [p[1] for p in poly]
+
+            patch = ax.fill(Em, Nm, color='green', alpha=1.0)[0]
+
+        for poly in thor_cov_pl:
+            if len(poly) == 0:
+                continue
+
+            Nt = poly[:,0]
+            Et = poly[:,1]
+            #print(f"polygon to draw {poly}")
+
+            patch = ax.fill(Et, Nt, color='blue', alpha=1.0)[0]
+            #print("DONNNE")
 
         return (
-            marie_cov_sc, thor_cov_sc,
+            marie_cov_pl, thor_cov_pl,
             marie_dot, thor_dot, grethe_dot,
             marie_bubble, thor_bubble, grethe_bubble, grethe_comm,
             cov_line, marie_line, thor_line,
             gm_dist_line, gt_dist_line
         )
 
-    anim = FuncAnimation(fig, update, frames=T, init_func=init, interval=2000, blit=False, repeat=False)
+    anim = FuncAnimation(fig, update, frames=T, init_func=init, interval=500, blit=False, repeat=False)
     plt.show()
 
 
 if __name__ == "__main__":
     main()
+    print("Game over")
 

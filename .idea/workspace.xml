@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="61d35340-5392-433c-86e7-74bdc975f380" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/test_algo.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test_class.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test_config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_1131.31.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_1273.67.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_1638.68.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_1715.79.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_1837.33.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_1938.27.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_2750.29.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_281.85.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_3370.14.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_4461.19.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_4752.40.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_4817.20.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_5089.27.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_5096.27.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_5143.22.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_5293.28.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_5446.36.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_5532.97.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/coverage_plan_6117.81.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/environment.py" beforeDir="false" afterPath="$PROJECT_DIR$/environment.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/imc-scripts/imcpy_test.py" beforeDir="false" afterPath="$PROJECT_DIR$/imc-scripts/imcpy_test.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/test.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotChats">
+    <option name="panelChat">
+      <chat>
+        <option name="activeSessionId" value="9a3aa21a-f38a-4be4-8748-8cdb8f441113" />
+        <option name="sessions">
+          <session>
+            <option name="chatType" value="PANEL" />
+            <option name="id" value="9a3aa21a-f38a-4be4-8748-8cdb8f441113" />
+            <option name="modeId" value="Ask" />
+            <option name="modelType" value="builtin_family" />
+            <option name="modelValue" value="auto" />
+            <option name="targetType" value="LOCAL" />
+          </session>
+        </option>
+        <option name="type" value="PANEL" />
+      </chat>
+    </option>
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_/home/awa/PhDWork_programs/hunters_game" value="39R3fWG93HpukziAtl5L3rXQn0t" />
+    </persistenceIdMap>
+  </component>
+  <component name="CopilotUserSelectedModel">
+    <selectedModels>
+      <entry key="agent-panel" value="Claude Haiku 4.5" />
+      <entry key="chat-panel" value="Claude Haiku 4.5" />
+    </selectedModels>
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3
+}</component>
+  <component name="ProjectId" id="39R3fWG93HpukziAtl5L3rXQn0t" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+    <option name="sortKey" value="BY_TIME_DESCENDING" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/home/awa/PhDWork_programs/hunters_game",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.lookFeel"
+  }
+}]]></component>
+  <component name="RunManager">
+    <configuration name="test" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="hunters_game" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="DEBUG_JUST_MY_CODE" value="false" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/test.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.test" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-c59985aa861c-c2ffad84badb-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.24374.152" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="61d35340-5392-433c-86e7-74bdc975f380" name="Changes" comment="" />
+      <created>1770645159457</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1770645159457</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/extra.py</url>
+          <line>227</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/extra.py</url>
+          <line>320</line>
+          <option name="timeStamp" value="4" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/coverage_planner.py</url>
+          <line>163</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/coverage_planner.py</url>
+          <line>276</line>
+          <option name="timeStamp" value="6" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/coverage_planner.py</url>
+          <line>290</line>
+          <option name="timeStamp" value="10" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/coverage_planner.py</url>
+          <line>1095</line>
+          <option name="timeStamp" value="11" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/coverage_planner.py</url>
+          <line>668</line>
+          <option name="timeStamp" value="14" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/kinematics.py</url>
+          <line>41</line>
+          <option name="timeStamp" value="15" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/test.py</url>
+          <line>447</line>
+          <option name="timeStamp" value="20" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/test.py</url>
+          <line>182</line>
+          <option name="timeStamp" value="22" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/test.py</url>
+          <line>234</line>
+          <option name="timeStamp" value="23" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/test_class.py</url>
+          <line>831</line>
+          <option name="timeStamp" value="24" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/test_class.py</url>
+          <line>318</line>
+          <option name="timeStamp" value="25" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+  <component name="github-copilot-workspace">
+    <instructionFileLocations>
+      <option value=".github/instructions" />
+    </instructionFileLocations>
+    <promptFileLocations>
+      <option value=".github/prompts" />
+    </promptFileLocations>
+  </component>
+</project>

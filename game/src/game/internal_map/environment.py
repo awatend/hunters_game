@@ -145,13 +145,13 @@ class Environment:
     def compute_score_fields(self):
         covered = self.total_Covered_area.astype(bool)
         collision = self.Collision_area.astype(bool)
-        sigma_explore_m = 50.0
-        sigma_exploit_m = 12
+        #sigma_explore_m = 50.0
+        sigma_exploit_m = 2.0
         sigma_safe_m = 80.0
 
-        #dist_to_covered_m = distance_transform_edt(~covered) * self.geom.cell_spacing_m
-        explore_field =1 - self.prior  #np.exp(-(dist_to_covered_m / sigma_exploit_m) ** 2).astype(np.float32) * (1 - self.prior)
-        exploit_field = self.prior
+        dist_to_covered_m = distance_transform_edt(~covered) * self.geom.cell_spacing_m
+        explore_field =self.prior  #np.exp(-(dist_to_covered_m / sigma_exploit_m) ** 2).astype(np.float32) * (1 - self.prior)
+        exploit_field = np.exp(-(dist_to_covered_m / sigma_exploit_m) ** 2).astype(np.float32)
 
 
 
@@ -185,16 +185,13 @@ class Environment:
         return  safe_field, explore_field, exploit_field
 
     def calculate_score(self, i, j, w_safety, w_explore, w_exploit,
-                        safe_field, explore_field, exploit_field):
+                        ):
         """
         Calculate score for a cell (i, j).
         All field components should be normalized to [0, 1].
         """
-        return (
-             w_safety * safe_field[i, j]
-            * (w_explore * explore_field[i, j]
-            + w_exploit * exploit_field[i, j])
-        )
+        safe_field,explore_field,exploit_field=self.compute_score_fields()
+        return (w_explore * explore_field[i, j] + w_exploit * exploit_field[i, j])
 
     def get_neighborhood_mask_fast(self, i, j, size=3):
         """
@@ -203,7 +200,8 @@ class Environment:
         """
         return self.geom.neighborhood_mask(i, j, size)
 
-    def select_seed_ij(self, start_location=None, size=4, N_samples=10,):
+
+    def select_seed_ijs(self, start_location=None, size=4, N_samples=10,):
 
         H, W = self.shape
 
@@ -271,9 +269,70 @@ class Environment:
         return best_seed
 
 
-    def grow_surface_from_seed(self, seed_ij, S=200, neighborhood=8,
+    def select_seed_ij(self, start_location=None, size=2, N_samples=10, min_safe_dist_m=2.5,w_safety=1.0, w_explore=1.0, w_exploit=1.0):
+
+        H, W = self.shape
+
+        if start_location is None:
+            print("Provide a start location")
+            return None
+
+
+        # Clamp start point
+
+        si = max(0, min(H - 1, int(start_location[0])))
+        sj = max(0, min(W - 1, int(start_location[1])))
+
+        safe_mask=distance_transform_edt(~self.Collision_area) * self.geom.cell_spacing_m >= float(min_safe_dist_m)
+        while True:
+            neighborhood_mask = self.get_neighborhood_mask_fast(si, sj, size)
+            safe_neighborhood=neighborhood_mask & safe_mask
+            uncovered_save_neighborhood=safe_neighborhood & ~self.total_Covered_area
+
+            coords = np.argwhere (uncovered_save_neighborhood)
+            if len(coords) > 0 or size > max(H, W):
+                break
+            size += 1
+        if coords.size == 0:
+            print("No seed possible")
+            return None
+        # Randomly sample candidates
+        rng = np.random.default_rng()
+        n_select = min(N_samples, len(coords))
+        sampled_idx = rng.choice(len(coords), size=n_select, replace=False)
+        sampled_coords = coords[sampled_idx]
+
+        # Evaluate candidates
+        best_score = -np.inf
+        best_seed = None
+
+        for i, j in sampled_coords:
+            initial_mask = self.get_neighborhood_mask_fast(i, j)
+            local_mask = initial_mask & safe_mask & ~self.total_Covered_area
+
+            total_count = np.count_nonzero(initial_mask)
+            #for each element in the local mask, of coordinate mi,mj, calculate the score based on safety, exploration, and exploitation
+            score=0
+            for mi, mj in np.argwhere(local_mask):
+                score+= self.calculate_score(mi, mj, w_safety, w_explore, w_exploit,)
+            score=score/total_count
+            if score > best_score:
+                best_score = score
+                best_seed = (i, j)
+        return best_seed
+    #Grow a surface from a seed point.
+
+    def grow_surface_from_seed(self, seed_ij, S=10, neighborhood=8,
             w_safe=1.0, w_explore=1.0, w_exploit=1.0,
             min_safe_dist_m=2.5, w_compactness=0.8):
+        start=seed_ij
+
+        seed_ij = self.select_seed_ij(start, size=3, N_samples=5, min_safe_dist_m=min_safe_dist_m,
+                                       w_safety=w_safe, w_explore=w_explore, w_exploit=w_exploit)
+
+        #distance from start to seed
+        distance= np.sqrt((seed_ij[0]-start[0])**2+(seed_ij[1]-start[1])**2)
+        print(f"distance from start to seed: {distance}")
 
         H, W = self.shape
         if S <= 0:
@@ -285,7 +344,6 @@ class Environment:
                        w_explore * ex_f + w_exploit * et_f)
 
 
-        w_compactness=0.01
         # Calculate feasibility map
         feasible = (self.Initial_area & ~self.Collision_area)
         if min_safe_dist_m > 0:
@@ -358,7 +416,7 @@ class Environment:
             # 2. FIX: Lazy Update
             # Re-check the score because a neighbor might have been added since this was pushed
             current_s = get_current_score(i, j)
-            if -neg_s < current_s - 1e-7:
+            if  current_s > neg_s+ 1e-7:
                 # If current score is better than what we popped, re-push and try again
                 neg_s, i, j =heapq.heappushpop(heap, (-current_s, i, j))
 
@@ -370,19 +428,21 @@ class Environment:
             for ni, nj in _geom.neighbors(i, j):
                 try_push(ni, nj)
 
-            if selected_count< S-1:
+            if selected_count< int(S):
                 continue
             else:
-                selection_quality= np.argwhere(selected & ~self.total_Covered_area)
-                if selection_quality.size > 0.99*S:
-                    print(f"good qualuty")
+                selection_quality= np.count_nonzero(selected & ~self.total_Covered_area)
+
+                if selection_quality > int (0.8*S):
+                    print(f"good quality")
                     quality = True
                 else:
+                    print(f"poor coverage quality{selection_quality}")
                     selected=selected*False
                     selected_count=0
                     iter+=1
                     start=[seed_ij[0]+random.randint(-3*iter,3*iter),seed_ij[1]+random.randint(-3*iter,3*iter)]
-                    new_seed=self.select_seed_ij(start,size=3+iter, N_samples=5+2*iter)
+                    new_seed=self.select_seed_ij(start,size=3+iter, N_samples=5+2*iter, min_safe_dist_m=min_safe_dist_m,w_safety=w_safe, w_explore=w_explore, w_exploit=w_exploit)
                     try_push(new_seed[0], new_seed[1])
                     print("high coverage region----recomputing...")
 

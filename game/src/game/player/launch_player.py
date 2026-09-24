@@ -14,8 +14,9 @@ import configparser
 import math
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 import time
+import json
 import numpy as np
 import shapely.geometry as sg
 from shapely import wkt
@@ -24,12 +25,9 @@ try:
 except ImportError as error:
     redis = None
     _REDIS_IMPORT_ERROR = error
-from game.internal_map.cell_geometry import RectangularGeometry
 from game.internal_map.environment import Environment
 from game.player.player import Player
-
-def _csv(value: str, cast=float) -> List:
-    return [cast(item.strip()) for item in value.split(",")]
+from game.prior.load_prior import LoadPrior
 
 
 
@@ -43,14 +41,38 @@ class LaunchPlayer:
         if not parser.read(self.config_file):
             raise FileNotFoundError(f"Configuration file not found: {self.config_file}")
         self.config = parser
-        geometry = parser["geometry"]
-        rows, cols = _csv(geometry["shape"], int)
-        self.geometry = RectangularGeometry(
-            shape=(rows, cols),
-            resolution=geometry.getfloat("resolution"),
-            origin=tuple(_csv(geometry.get("origin", "0, 0"))),
-            connectivity=geometry.getint("connectivity", fallback=8),
+        redis_config = parser["redis"] if parser.has_section("redis") else None
+        self.request_stream = (
+            redis_config.get("request_stream", "allocation_requests")
+            if redis_config else "allocation_requests"
         )
+        self.result_hash = (
+            redis_config.get("result_hash", "allocation_results")
+            if redis_config else "allocation_results"
+        )
+        self.coverage_stream = (
+            redis_config.get("coverage_stream", "coverage_progress")
+            if redis_config else "coverage_progress"
+        )
+        self.obstacle_stream = (
+            redis_config.get("obstacle_stream", "obstacles")
+            if redis_config else "obstacles"
+        )
+        if not parser.has_section("prior"):
+            raise ValueError("INI file must contain a [prior] section")
+
+        prior_config = dict(parser["prior"])
+        prior_path = prior_config.get("path")
+        if prior_path is not None:
+            configured_path = Path(prior_path.strip().strip("\"'"))
+            if not configured_path.is_absolute():
+                from_config = self.config_file.parent / configured_path
+                prior_config["path"] = str(
+                    from_config if from_config.exists() else configured_path
+                )
+
+        self.prior = LoadPrior(**prior_config)
+        self.geometry = self.prior.geometry
 
         sections = [
             (name, parser[name])
@@ -79,7 +101,7 @@ class LaunchPlayer:
         """Create and initialize one player's environment."""
         environment = Environment(self.geometry)
         environment.Initial_area[:] = True
-        environment.update(np.full(self.geometry.shape, 0.01, dtype=np.float32))
+        environment.update(self.prior.field)
         return environment
 
     def set_treasure_location(self):
@@ -92,6 +114,72 @@ class LaunchPlayer:
         if len(coords) == 0:
             raise ValueError("Cannot place treasure: no feasible environment cells")
         return tuple(coords[np.random.randint(len(coords))])
+
+    def plot_areas(self, output: str | Path | None = None, show: bool = True):
+        """Plot initial and covered areas using the active hexagonal grid.
+
+        Covered cells are combined across all loaded players.  The initial
+        area is shown in blue and covered cells are shown in orange.
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Polygon as MatplotlibPolygon
+
+        environments = [
+            player.environment
+            for player in self.players.values()
+            if player.environment is not None
+        ]
+        if not environments:
+            raise RuntimeError("No player environment has been initialized")
+
+        initial = np.logical_or.reduce(
+            [environment.Initial_area for environment in environments]
+        )
+        covered = np.logical_or.reduce(
+            [environment.total_Covered_area for environment in environments]
+        )
+        if initial.shape != self.geometry.shape or covered.shape != self.geometry.shape:
+            raise ValueError("Environment masks do not match the active geometry")
+
+        figure, axis = plt.subplots(figsize=(10, 8))
+        for row in range(self.geometry.shape[0]):
+            for col in range(self.geometry.shape[1]):
+                is_initial = bool(initial[row, col])
+                is_covered = bool(covered[row, col])
+                if not is_initial and not is_covered:
+                    continue
+                vertices = [
+                    (east, north)
+                    for north, east in self.geometry.cell_vertices(row, col)
+                ]
+                facecolor = "tab:orange" if is_covered else "tab:blue"
+                axis.add_patch(MatplotlibPolygon(
+                    vertices,
+                    closed=True,
+                    facecolor=facecolor,
+                    edgecolor="white",
+                    linewidth=0.2,
+                    alpha=0.8,
+                ))
+
+        axis.set_aspect("equal")
+        extent = self.geometry.world_extent()
+        axis.set_xlim(extent[0], extent[1])
+        axis.set_ylim(extent[2], extent[3])
+        axis.set_xlabel("easting (m)")
+        axis.set_ylabel("northing (m)")
+        axis.set_title("Initial and covered hexagonal areas")
+        from matplotlib.patches import Patch
+        axis.legend(handles=[
+            Patch(facecolor="tab:blue", label="Initial area"),
+            Patch(facecolor="tab:orange", label="Covered area"),
+        ])
+        figure.tight_layout()
+        if output is not None:
+            figure.savefig(output, dpi=200, bbox_inches="tight")
+        if show:
+            plt.show()
+        return figure, axis
 
     @staticmethod
     def is_treasure_found(mask, treasure_location) -> bool:
@@ -106,8 +194,8 @@ class LaunchPlayer:
         if self.redis_client is None:
             raise RuntimeError("Redis client is not configured")
         current_time = int (time.time())
-        status= self.redis_client.xadd(
-            "allocation_requests",
+        message_id = self.redis_client.xadd(
+            self.request_stream,
             {
                 "id": str(player.id),
                 "time": str(current_time),
@@ -123,14 +211,10 @@ class LaunchPlayer:
 
         deadline = time.monotonic() + 5 * 60
         while True:
-            messages = self.redis_client.xrevrange("allocation_results", count=100)
-            #print(f"messages:{messages}")
-
-            latest = None
-            for  id, data in messages:
-                if float(data["time"]) >= float(request_time):
-                    latest = data
-                    break
+            raw_result = self.redis_client.hget(self.result_hash, str(player.id))
+            latest = json.loads(raw_result) if raw_result is not None else None
+            if latest is not None and float(latest["time"]) < float(request_time):
+                latest = None
 
             if latest is not None:
                 status = int(latest["status"])
@@ -138,6 +222,7 @@ class LaunchPlayer:
                     area = wkt.loads(latest["roi"])
                 else:
                     area = None
+                self.redis_client.hdel(self.result_hash, str(player.id))
                 print(f"status:{status},area:{area}")
                 return status, area
 
@@ -155,12 +240,14 @@ class LaunchPlayer:
             raise RuntimeError(f"Player {player.name} has no environment")
         environment = player.environment
         environment.set_collision_area()
-        start = environment.world_to_grid(*player.current_pose[:2])
-        seed = environment.select_seed_ij(start_location=start)
-        if seed is None:
-            return None
+        start = environment.world_to_grid(player.current_pose[1], player.current_pose[0])
+        print(f"Start point for action {start}")
+        #seed = environment.select_seed_ij(start_location=start)
+        #if seed is None:
+            #return None
+        #surface grow from seed=start
         return environment.grow_surface_from_seed(
-            seed_ij=seed,
+            seed_ij=start,
             S=player.surface,
             neighborhood=player.neighborhood,
             w_safe=player.w_safe,
@@ -176,7 +263,9 @@ class LaunchPlayer:
         try:
             from marcov import (
                 OptimizeSwathLengths, PathPlanner, RouteOrder, RoutePlanner,
-                SwathGenerator, TurnType, Vehicle,
+                SwathGenerator, TurnType, Vehicle,plot_path,plot_route,save_figure,
+                plot_area,plot_headland, plot_coverage,save_figure
+
             )
         except ImportError as error:
             raise ImportError("route_planner requires the marcov package") from error
@@ -193,17 +282,23 @@ class LaunchPlayer:
             name=player.name,
         )
         swaths = SwathGenerator(vehicle).generate(
-            polygon, angle=OptimizeSwathLengths(step=math.pi / 36), headland_distance=7.0
+            polygon, angle=OptimizeSwathLengths(step=math.pi / 50), headland_distance=player.sensor_swath/2
         )
-        route = RoutePlanner().plan(swaths, order=RouteOrder.SPIRAL)
+        original_swaths = swaths
+        print(f"Swaths generated: {len(swaths.swaths)}")
+        route = RoutePlanner().plan(swaths, order=RouteOrder.BOUSTROPHEDON)
+        print(f"Route planned: {len(route.swaths)} swaths, {len(route.connections)} connections")
+
         path_planner = PathPlanner(vehicle, turn_type=TurnType.DUBINS, step=1.0)
-        path=path_planner.plan(
-            route, headland=polygon
-        )
+        path=path_planner.plan(route, headland=polygon)
         if not path.states:
             return None
         if output_dir is not None:
-            os.makedirs(output_dir, exist_ok=True)
+            figure = plot_coverage(polygon, swath_result=original_swaths, route_result=route, path=path, show_headland=True)
+            current_time = int(time.time())
+            save_figure(figure, os.path.join(output_dir, f"thor_{current_time}.png"))
+
+
         waypoints=path_planner.simplify_path(path,  tolerance=1.0)
         return waypoints
 
@@ -222,13 +317,17 @@ class LaunchPlayer:
                         print(f"Step {step}: Player {player.name} found the treasure at {self.treasure_location}")
                         return
                     polygon = player.environment.geom.mask_to_polygon(action)
-                    print (f'polygon: {polygon}')
-                    waypoints = self.route_planner(polygon, player)
+                    #print (f'polygon: {polygon}')
+                    #print(f"boundaries{player.environment.geom.mask_to_boundary_polygon(action)}")
+                    waypoints = self.route_planner(polygon, player, output_dir=f"output/{player.name}")
+                    print (f'sending an allocation request')
                     request_time = self.request_allocation(player, polygon)
+                    print (f'waiting for allocation')
                     status, area = self.get_allocation_result(player, request_time)
                     if status == 0:
                         player.environment.mark_covered(action)
                         player.current_pose = list(waypoints[-1]) if waypoints else player.current_pose
+                        print(f"current_pose: {player.current_pose}")
                     elif status== 1:
                         print(f"Step {step}: Player {player.name} area already covered")
                         player.environment.mark_covered(
@@ -239,13 +338,6 @@ class LaunchPlayer:
                         player.environment.add_collision_area(
                             player.environment.geom.polygon_to_mask(area)
                         )
-
-
-
-
-
-
-
 
 
 def main() -> None:
@@ -259,7 +351,15 @@ def main() -> None:
         raise RuntimeError(
             "The redis package is required. Install it with: pip install redis"
         ) from _REDIS_IMPORT_ERROR
-    client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    redis_config = config["redis"] if config.has_section("redis") else None
+    client = redis.Redis(
+        host=redis_config.get("host", "localhost") if redis_config else "localhost",
+        port=redis_config.getint("port", fallback=6379) if redis_config else 6379,
+        db=redis_config.getint("db", fallback=0) if redis_config else 0,
+        decode_responses=True,
+    )
     client.ping()
     launcher = LaunchPlayer(args.config, redis_client=client)
     launcher.run( steps=args.steps)
